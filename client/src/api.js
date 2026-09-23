@@ -1,4 +1,4 @@
-```jsx
+
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import Icon from '../components/Icon.jsx';
@@ -682,4 +682,3 @@ function Dashboard() {
 }
 
 export default Dashboard;
-```
