@@ -1,95 +1,29 @@
-```jsx
-import React, { useEffect, useState } from 'react';
-import { useApp } from '../context/AppContext.jsx';
-import Icon from '../components/Icon.jsx';
+
+import React, { useEffect, useMemo, useState } from "react";
+import { useApp } from "../context/AppContext.jsx";
+import Icon from "../components/Icon.jsx";
 
 const FAQS = [
   {
-    q: 'How do I reschedule an appointment?',
-    a: 'Go to “My Appointments”, find the visit you want to change, and select Reschedule. You’ll pick a new date and time without losing your original doctor.',
+    q: "How do I book an appointment?",
+    a: "Choose a department or doctor, select an available time slot, and confirm your appointment.",
   },
   {
-    q: 'Can I cancel without calling the hospital?',
-    a: 'Yes. Open “My Appointments” and select Cancel next to the relevant booking. A confirmation will appear before it’s finalized.',
+    q: "Can I cancel my appointment?",
+    a: "Yes. Open your appointments and use the cancellation option for an eligible appointment.",
   },
   {
-    q: 'What if no time slots are shown for a doctor?',
-    a: 'That means the doctor is fully booked on that date, or does not consult that day. Try another date or a different doctor in the same department.',
+    q: "How can I find a doctor?",
+    a: "Use the Doctors section or select a department to view available doctors.",
   },
   {
-    q: 'Is walk-in emergency care available?',
-    a: 'Yes, our emergency department operates 24/7 and does not require a scheduled appointment.',
+    q: "Can I see my appointment history?",
+    a: "Yes. Your previous and upcoming appointments are available in the appointments section.",
   },
 ];
 
-function WeekChart({ week }) {
-  const safeWeek = Array.isArray(week) ? week : [];
-
-  const counts = safeWeek.map((item) =>
-    typeof item?.count === 'number' ? item.count : 0
-  );
-
-  const labels = safeWeek.map((item) => item?.label || '');
-
-  const max = Math.max(...counts, 1);
-
-  const width = 320;
-  const barWidth = 28;
-  const gap = (width - barWidth * 7) / 8;
-  const chartHeight = 140;
-  const topPadding = 20;
-  const baseline = 118;
-  const maxBarHeight =
-    chartHeight - topPadding - (chartHeight - baseline);
-
-  return (
-    <svg
-      viewBox={`0 0 ${width} ${chartHeight}`}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      {counts.map((count, index) => {
-        const barHeight = (count / max) * maxBarHeight;
-        const x = gap + index * (barWidth + gap);
-        const y = baseline - barHeight;
-
-        return (
-          <g key={index}>
-            <rect
-              x={x}
-              y={y}
-              width={barWidth}
-              height={barHeight}
-              rx="5"
-              fill={index === 0 ? '#0B2A4A' : '#6FA3D8'}
-            />
-
-            <text
-              x={x + barWidth / 2}
-              y={baseline + 15}
-              fontSize="10"
-              fill="#3E7FC4"
-              textAnchor="middle"
-              fontFamily="IBM Plex Sans"
-            >
-              {labels[index]}
-            </text>
-
-            <text
-              x={x + barWidth / 2}
-              y={Math.max(y - 6, 12)}
-              fontSize="11"
-              fill="#0B2A4A"
-              textAnchor="middle"
-              fontFamily="Space Grotesk"
-              fontWeight="700"
-            >
-              {count}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
+function SafeArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 export default function Dashboard() {
@@ -103,472 +37,644 @@ export default function Dashboard() {
     startBooking,
   } = useApp();
 
-  const [stats, setStats] = useState(null);
-  const [todayAppts, setTodayAppts] = useState([]);
-  const [upcomingCount, setUpcomingCount] = useState(0);
-  const [openFaq, setOpenFaq] = useState(null);
+  const [stats, setStats] = useState({});
+  const [todayAppointments, setTodayAppointments] = useState([]);
+  const [allAppointments, setAllAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Always make sure these values are arrays.
-  const safeDepartments = Array.isArray(departments)
-    ? departments
-    : [];
-
-  const safeDoctors = Array.isArray(doctors)
-    ? doctors
-    : [];
+  const safeDepartments = SafeArray(departments);
+  const safeDoctors = SafeArray(doctors);
 
   useEffect(() => {
-    let cancelled = false;
+    let mounted = true;
 
-    async function load() {
+    async function loadDashboard() {
+      setLoading(true);
+
       try {
-        const [statsData, todayData] = await Promise.all([
-          api('/stats'),
-          api('/appointments/today'),
+        const results = await Promise.allSettled([
+          api.get("/stats"),
+          api.get("/appointments/today"),
+          api.get("/appointments"),
         ]);
 
-        if (cancelled) return;
+        if (!mounted) return;
 
-        setStats(statsData || {});
+        const statsResult = results[0];
+        const todayResult = results[1];
+        const appointmentsResult = results[2];
 
-        setTodayAppts(
-          Array.isArray(todayData)
-            ? todayData
-            : []
-        );
+        if (statsResult.status === "fulfilled") {
+          const data = statsResult.value?.data;
 
-        if (currentPatient) {
-          const mine = await api('/appointments');
-
-          if (!cancelled) {
-            const safeMine = Array.isArray(mine)
-              ? mine
-              : [];
-
-            setUpcomingCount(
-              safeMine.filter(
-                (appointment) =>
-                  appointment?.status === 'upcoming'
-              ).length
-            );
+          if (data && typeof data === "object" && !Array.isArray(data)) {
+            setStats(data);
+          } else {
+            setStats({});
           }
-        } else if (!cancelled) {
-          setUpcomingCount(0);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          showToast(
-            err?.message || 'Unable to load dashboard data.',
-            'warn'
-          );
         }
 
-        if (!cancelled) {
-          setTodayAppts([]);
-          setUpcomingCount(0);
+        if (todayResult.status === "fulfilled") {
+          const data = todayResult.value?.data;
+
+          if (Array.isArray(data)) {
+            setTodayAppointments(data);
+          } else if (Array.isArray(data?.appointments)) {
+            setTodayAppointments(data.appointments);
+          } else {
+            setTodayAppointments([]);
+          }
+        }
+
+        if (appointmentsResult.status === "fulfilled") {
+          const data = appointmentsResult.value?.data;
+
+          if (Array.isArray(data)) {
+            setAllAppointments(data);
+          } else if (Array.isArray(data?.appointments)) {
+            setAllAppointments(data.appointments);
+          } else {
+            setAllAppointments([]);
+          }
+        }
+      } catch (error) {
+        console.error("Dashboard loading error:", error);
+
+        if (mounted) {
+          setStats({});
+          setTodayAppointments([]);
+          setAllAppointments([]);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
         }
       }
     }
 
-    load();
+    loadDashboard();
 
     return () => {
-      cancelled = true;
+      mounted = false;
     };
+  }, [api]);
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPatient]);
+  const sortedToday = useMemo(() => {
+    const items = SafeArray(todayAppointments);
 
-  const safeTodayAppts = Array.isArray(todayAppts)
-    ? todayAppts
-    : [];
+    return [...items]
+      .sort((a, b) => {
+        const timeA = String(a?.time || a?.appointmentTime || "");
+        const timeB = String(b?.time || b?.appointmentTime || "");
 
-  const totalSlotsPerDoctor = 15;
+        return timeA.localeCompare(timeB);
+      })
+      .slice(0, 6);
+  }, [todayAppointments]);
 
-  const doctorsToday =
-    typeof stats?.doctorsToday === 'number'
-      ? stats.doctorsToday
-      : 0;
+  const recentAppointments = useMemo(() => {
+    const items = SafeArray(allAppointments);
 
-  const openToday = stats
-    ? Math.max(
-        doctorsToday * totalSlotsPerDoctor -
-          safeTodayAppts.length,
-        0
-      )
-    : '–';
+    return [...items]
+      .sort((a, b) => {
+        const dateA = new Date(
+          a?.date || a?.appointmentDate || a?.createdAt || 0
+        ).getTime();
 
-  const statCards = stats
-    ? [
-        {
-          icon: 'cal',
-          val: stats.todayCount ?? 0,
-          label: "Today's appointments",
-        },
-        {
-          icon: 'clock',
-          val: upcomingCount,
-          label: 'Your upcoming visits',
-        },
-        {
-          icon: 'users',
-          val: doctorsToday,
-          label: 'Doctors available today',
-        },
-        {
-          icon: 'pulse',
-          val: stats.totalDepartments ?? 0,
-          label: 'Departments covered',
-        },
-      ]
-    : [];
+        const dateB = new Date(
+          b?.date || b?.appointmentDate || b?.createdAt || 0
+        ).getTime();
 
-  const sortedToday = [...safeTodayAppts]
-    .sort((a, b) =>
-      String(a?.time || '').localeCompare(
-        String(b?.time || '')
-      )
-    )
-    .slice(0, 6);
+        return dateB - dateA;
+      })
+      .slice(0, 6);
+  }, [allAppointments]);
+
+  const doctorsToday = Number(
+    stats?.doctorsToday ??
+      stats?.todayDoctors ??
+      stats?.activeDoctors ??
+      safeDoctors.length ??
+      0
+  );
+
+  const todayCount = Number(
+    stats?.todayAppointments ??
+      stats?.appointmentsToday ??
+      todayAppointments.length ??
+      0
+  );
+
+  const totalDepartments = Number(
+    stats?.departments ??
+      stats?.totalDepartments ??
+      safeDepartments.length ??
+      0
+  );
+
+  const totalDoctors = Number(
+    stats?.doctors ??
+      stats?.totalDoctors ??
+      safeDoctors.length ??
+      0
+  );
+
+  const openToday = Number(
+    stats?.openToday ??
+      stats?.availableToday ??
+      stats?.availableDoctors ??
+      doctorsToday ??
+      0
+  );
+
+  const weeklyData = useMemo(() => {
+    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+    const source =
+      stats?.weeklyAppointments ||
+      stats?.weekly ||
+      stats?.week ||
+      stats?.appointmentVolume;
+
+    if (Array.isArray(source)) {
+      return days.map((day, index) => {
+        const item = source[index];
+
+        if (typeof item === "number") {
+          return {
+            day,
+            value: item,
+          };
+        }
+
+        if (item && typeof item === "object") {
+          return {
+            day: item.day || item.label || day,
+            value: Number(item.value ?? item.count ?? item.appointments ?? 0),
+          };
+        }
+
+        return {
+          day,
+          value: 0,
+        };
+      });
+    }
+
+    return days.map((day) => ({
+      day,
+      value: 0,
+    }));
+  }, [stats]);
+
+  const maxWeeklyValue = Math.max(
+    ...weeklyData.map((item) => Number(item.value) || 0),
+    1
+  );
+
+  function getDoctorName(appointment) {
+    return (
+      appointment?.doctor?.name ||
+      appointment?.doctorName ||
+      appointment?.doctor?.fullName ||
+      "Doctor"
+    );
+  }
+
+  function getDepartmentName(appointment) {
+    return (
+      appointment?.department?.name ||
+      appointment?.departmentName ||
+      appointment?.department ||
+      "General"
+    );
+  }
+
+  function getPatientName(appointment) {
+    return (
+      appointment?.patient?.name ||
+      appointment?.patientName ||
+      currentPatient?.name ||
+      "Patient"
+    );
+  }
+
+  function getAppointmentTime(appointment) {
+    return (
+      appointment?.time ||
+      appointment?.appointmentTime ||
+      appointment?.slot ||
+      "--"
+    );
+  }
+
+  function getAppointmentStatus(appointment) {
+    return (
+      appointment?.status ||
+      appointment?.appointmentStatus ||
+      "Scheduled"
+    );
+  }
+
+  function formatDate(value) {
+    if (!value) return "--";
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return String(value);
+    }
+
+    return date.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }
+
+  function handleDepartmentBooking(department) {
+    try {
+      if (typeof quickBookDept === "function") {
+        quickBookDept(department);
+        return;
+      }
+
+      if (typeof startBooking === "function") {
+        startBooking({
+          departmentId: department?._id || department?.id,
+          department,
+        });
+        return;
+      }
+
+      if (typeof showToast === "function") {
+        showToast("Please open the booking page to continue.");
+      }
+    } catch (error) {
+      console.error("Booking error:", error);
+
+      if (typeof showToast === "function") {
+        showToast("Unable to start booking.");
+      }
+    }
+  }
 
   return (
-    <div className="view active" id="view-dashboard">
-      <section>
-        <div className="hero">
-          <div className="hero-intro">
-            <h1>
-              Your care, scheduled without the hold music.
-            </h1>
+    <div className="dashboard-page">
+      {/* HERO */}
+      <section className="dashboard-hero">
+        <div>
+          <p className="dashboard-eyebrow">LifeCare Hospital</p>
 
-            <p>
-              LifeCare brings every department, doctor and
-              open slot into one place — book, reschedule or
-              cancel an appointment in under a minute.
-            </p>
+          <h1>
+            Welcome
+            {currentPatient?.name ? `, ${currentPatient.name}` : ""}
+          </h1>
 
-            <div className="hero-stats">
-              <div className="hero-stat">
-                <b>
-                  {safeDoctors.length || '–'}
-                </b>
-                <span>Doctors on staff</span>
-              </div>
+          <p>
+            Manage your appointments, find doctors, and access hospital
+            services from one place.
+          </p>
 
-              <div className="hero-stat">
-                <b>
-                  {safeDepartments.length || '–'}
-                </b>
-                <span>Departments</span>
-              </div>
-
-              <div className="hero-stat">
-                <b>{openToday}</b>
-                <span>Slots open today</span>
-              </div>
-            </div>
-
+          <div className="dashboard-actions">
             <button
-              className="btn btn-primary"
-              style={{ marginTop: 24 }}
-              onClick={startBooking}
-            >
-              Book an appointment
-
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-                <path
-                  d="M5 12h14M13 6l6 6-6 6"
-                  stroke="#fff"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-          </div>
-
-          <div
-            className="panel"
-            style={{ margin: 0 }}
-          >
-            <h3>
-              This week's appointment volume
-            </h3>
-
-            <div className="chart-wrap">
-              {stats && (
-                <WeekChart week={stats.week} />
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <div className="stat-row">
-          {statCards.map((stat) => (
-            <div
-              className="stat-card"
-              key={stat.label}
-            >
-              <div
-                className="icon-badge"
-                style={{ color: 'var(--blue)' }}
-              >
-                <Icon
-                  name={stat.icon}
-                  size={17}
-                />
-              </div>
-
-              <b>{stat.val}</b>
-              <span>{stat.label}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <div className="dash-grid">
-          <div className="panel">
-            <h3>Today's schedule</h3>
-
-            <div>
-              {safeTodayAppts.length === 0 ? (
-                <p className="empty-note">
-                  No appointments scheduled for today.
-                </p>
-              ) : (
-                sortedToday.map((appointment) => {
-                  const doctor = safeDoctors.find(
-                    (doctorItem) =>
-                      doctorItem?.id ===
-                      appointment?.doctorId
-                  );
-
-                  const department = doctor
-                    ? safeDepartments.find(
-                        (departmentItem) =>
-                          departmentItem?.id ===
-                          doctor?.dept
-                      )
-                    : null;
-
-                  return (
-                    <div
-                      className="today-item"
-                      key={appointment?.id}
-                    >
-                      <div className="today-time">
-                        {appointment?.time || '—'}
-                      </div>
-
-                      <div className="today-info">
-                        <b>
-                          {appointment?.patientName ||
-                            'Unknown patient'}
-                        </b>
-
-                        <span>
-                          {doctor?.name ||
-                            'Unknown doctor'}
-
-                          {' · '}
-
-                          {department?.name || ''}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          <div className="panel">
-            <h3>Departments</h3>
-
-            <div
-              className="dept-grid"
-              style={{
-                gridTemplateColumns:
-                  'repeat(2,1fr)',
+              type="button"
+              className="primary-btn"
+              onClick={() => {
+                if (typeof startBooking === "function") {
+                  startBooking();
+                }
               }}
             >
-              {safeDepartments
-                .slice(0, 6)
-                .map((department) => (
-                  <button
-                    className="dept-card"
-                    style={{ cursor: 'pointer' }}
-                    key={department?.id}
-                    onClick={() =>
-                      quickBookDept(
-                        department?.id
-                      )
-                    }
-                  >
-                    <div className="dept-icon">
-                      <Icon
-                        name={
-                          department?.icon ||
-                          'pulse'
-                        }
-                        size={19}
-                      />
-                    </div>
+              <Icon name="calendar" />
+              Book Appointment
+            </button>
 
-                    <h4>
-                      {department?.name ||
-                        'Department'}
-                    </h4>
-                  </button>
-                ))}
-            </div>
-
-            {safeDepartments.length === 0 && (
-              <p className="empty-note">
-                No departments available.
-              </p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <div className="eyebrow-row">
-          <div>
-            <h2 className="section-title">
-              What patients say
-            </h2>
-          </div>
-        </div>
-
-        <div className="testi-row">
-          <div className="testi-card">
-            <p>
-              "I rescheduled my cardiology follow-up
-              from my phone during lunch. No calls,
-              no waiting."
-            </p>
-
-            <div className="testi-name">
-              Aman Mishra
-            </div>
-
-            <div className="testi-role">
-              Patient since 2022
-            </div>
-          </div>
-
-          <div className="testi-card">
-            <p>
-              "The available time slots update
-              instantly, so I never book something
-              that's already taken."
-            </p>
-
-            <div className="testi-name">
-              Sonu Sharma
-            </div>
-
-            <div className="testi-role">
-              Patient since 2021
-            </div>
-          </div>
-
-          <div className="testi-card">
-            <p>
-              "Clear confirmations and easy
-              cancellations — exactly what a
-              scheduling tool should feel like."
-            </p>
-
-            <div className="testi-name">
-              Sachin Yadav
-            </div>
-
-            <div className="testi-role">
-              Patient since 2023
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <div className="eyebrow-row">
-          <h2 className="section-title">
-            Frequently asked
-          </h2>
-        </div>
-
-        <div>
-          {FAQS.map((faq, index) => (
-            <div
-              className={`faq-item${
-                openFaq === index
-                  ? ' open'
-                  : ''
-              }`}
-              key={faq.q}
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => {
+                window.location.href = "/doctors";
+              }}
             >
-              <button
-                className="faq-q"
-                onClick={() =>
-                  setOpenFaq(
-                    openFaq === index
-                      ? null
-                      : index
-                  )
-                }
-              >
-                {faq.q}
+              <Icon name="user-md" />
+              Find a Doctor
+            </button>
+          </div>
+        </div>
 
-                <Icon
-                  name="x"
-                  size={16}
-                />
-              </button>
-
-              <div className="faq-a">
-                {faq.a}
-              </div>
-            </div>
-          ))}
+        <div className="dashboard-hero-icon">
+          <Icon name="hospital" />
         </div>
       </section>
 
-      <section>
-        <div className="emerg">
-          <div>
-            <h4>
-              Need urgent care right now?
-            </h4>
+      {/* STATS */}
+      <section className="dashboard-stats">
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Icon name="calendar" />
+          </div>
 
-            <p>
-              Our emergency department is open
-              24/7 — no appointment required.
-            </p>
+          <div>
+            <span>Today's Appointments</span>
+            <strong>{loading ? "..." : todayCount}</strong>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Icon name="user-md" />
+          </div>
+
+          <div>
+            <span>Total Doctors</span>
+            <strong>{loading ? "..." : totalDoctors}</strong>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Icon name="hospital" />
+          </div>
+
+          <div>
+            <span>Departments</span>
+            <strong>{loading ? "..." : totalDepartments}</strong>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Icon name="clock" />
+          </div>
+
+          <div>
+            <span>Available Today</span>
+            <strong>{loading ? "..." : openToday}</strong>
+          </div>
+        </div>
+      </section>
+
+      {/* WEEKLY APPOINTMENTS */}
+      <section className="dashboard-section">
+        <div className="section-heading">
+          <div>
+            <h2>Weekly Appointment Volume</h2>
+            <p>Appointment activity during the week.</p>
+          </div>
+        </div>
+
+        <div className="weekly-chart">
+          {weeklyData.map((item, index) => {
+            const value = Number(item.value) || 0;
+
+            const height =
+              value === 0
+                ? 8
+                : Math.max((value / maxWeeklyValue) * 100, 12);
+
+            return (
+              <div className="weekly-column" key={`${item.day}-${index}`}>
+                <div className="weekly-value">{value}</div>
+
+                <div className="weekly-bar-wrapper">
+                  <div
+                    className="weekly-bar"
+                    style={{
+                      height: `${height}%`,
+                    }}
+                  />
+                </div>
+
+                <span>{item.day}</span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* TODAY'S SCHEDULE */}
+      <section className="dashboard-section">
+        <div className="section-heading">
+          <div>
+            <h2>Today's Schedule</h2>
+            <p>Upcoming appointments for today.</p>
           </div>
 
           <button
-            className="btn"
-            onClick={() =>
-              showToast(
-                'Emergency line: +91 9324992701',
-                'call'
-              )
-            }
+            type="button"
+            className="text-btn"
+            onClick={() => {
+              window.location.href = "/appointments";
+            }}
           >
-            Call Emergency: 9324992701
+            View All
           </button>
         </div>
+
+        {sortedToday.length === 0 ? (
+          <div className="empty-state">
+            <Icon name="calendar" />
+
+            <h3>No appointments today</h3>
+
+            <p>
+              There are no appointments scheduled for today.
+            </p>
+          </div>
+        ) : (
+          <div className="appointment-list">
+            {sortedToday.map((appointment, index) => (
+              <div
+                className="appointment-card"
+                key={
+                  appointment?._id ||
+                  appointment?.id ||
+                  `today-${index}`
+                }
+              >
+                <div className="appointment-time">
+                  <strong>{getAppointmentTime(appointment)}</strong>
+                </div>
+
+                <div className="appointment-info">
+                  <h3>{getDoctorName(appointment)}</h3>
+
+                  <p>{getDepartmentName(appointment)}</p>
+
+                  <small>
+                    Patient: {getPatientName(appointment)}
+                  </small>
+                </div>
+
+                <span className="appointment-status">
+                  {getAppointmentStatus(appointment)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* DEPARTMENTS */}
+      <section className="dashboard-section">
+        <div className="section-heading">
+          <div>
+            <h2>Our Departments</h2>
+            <p>Choose a department to find the right specialist.</p>
+          </div>
+
+          <button
+            type="button"
+            className="text-btn"
+            onClick={() => {
+              window.location.href = "/departments";
+            }}
+          >
+            View All
+          </button>
+        </div>
+
+        {safeDepartments.length === 0 ? (
+          <div className="empty-state">
+            <Icon name="hospital" />
+
+            <h3>No departments available</h3>
+
+            <p>Please try again later.</p>
+          </div>
+        ) : (
+          <div className="department-grid">
+            {safeDepartments.slice(0, 6).map((department, index) => (
+              <div
+                className="department-card"
+                key={
+                  department?._id ||
+                  department?.id ||
+                  `department-${index}`
+                }
+              >
+                <div className="department-icon">
+                  <Icon name="hospital" />
+                </div>
+
+                <h3>
+                  {department?.name ||
+                    department?.title ||
+                    "Department"}
+                </h3>
+
+                <p>
+                  {department?.description ||
+                    "Specialized healthcare services and expert doctors."}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleDepartmentBooking(department)
+                  }
+                >
+                  Book Appointment
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* RECENT APPOINTMENTS */}
+      <section className="dashboard-section">
+        <div className="section-heading">
+          <div>
+            <h2>Recent Appointments</h2>
+            <p>Your latest appointment activity.</p>
+          </div>
+        </div>
+
+        {recentAppointments.length === 0 ? (
+          <div className="empty-state">
+            <Icon name="calendar" />
+
+            <h3>No recent appointments</h3>
+
+            <p>Your appointment history will appear here.</p>
+          </div>
+        ) : (
+          <div className="appointment-list">
+            {recentAppointments.map((appointment, index) => (
+              <div
+                className="appointment-card"
+                key={
+                  appointment?._id ||
+                  appointment?.id ||
+                  `recent-${index}`
+                }
+              >
+                <div className="appointment-info">
+                  <h3>{getDoctorName(appointment)}</h3>
+
+                  <p>{getDepartmentName(appointment)}</p>
+
+                  <small>
+                    {formatDate(
+                      appointment?.date ||
+                        appointment?.appointmentDate ||
+                        appointment?.createdAt
+                    )}
+                  </small>
+                </div>
+
+                <span className="appointment-status">
+                  {getAppointmentStatus(appointment)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* FAQ */}
+      <section className="dashboard-section">
+        <div className="section-heading">
+          <div>
+            <h2>Frequently Asked Questions</h2>
+            <p>Quick answers to common questions.</p>
+          </div>
+        </div>
+
+        <div className="faq-list">
+          {FAQS.map((faq, index) => (
+            <details key={index} className="faq-item">
+              <summary>
+                <span>{faq.q}</span>
+                <Icon name="chevron-down" />
+              </summary>
+
+              <p>{faq.a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      {/* EMERGENCY */}
+      <section className="emergency-section">
+        <div>
+          <p className="emergency-label">Emergency Services</p>
+
+          <h2>Need urgent medical assistance?</h2>
+
+          <p>
+            For medical emergencies, contact the hospital emergency
+            department immediately.
+          </p>
+        </div>
+
+        <a href="tel:108" className="emergency-btn">
+          <Icon name="phone" />
+          Call 108
+        </a>
       </section>
     </div>
   );
 }
-```
