@@ -53,9 +53,9 @@ export default function Dashboard() {
 
       try {
         const results = await Promise.allSettled([
-          api.get("/stats"),
-          api.get("/appointments/today"),
-          api.get("/appointments"),
+          api("/stats"),
+          api("/appointments/today"),
+          currentPatient ? api("/appointments") : Promise.resolve([]),
         ]);
 
         if (!mounted) return;
@@ -65,7 +65,7 @@ export default function Dashboard() {
         const appointmentsResult = results[2];
 
         if (statsResult.status === "fulfilled") {
-          const data = statsResult.value?.data;
+          const data = statsResult.value;
 
           if (data && typeof data === "object" && !Array.isArray(data)) {
             setStats(data);
@@ -75,7 +75,7 @@ export default function Dashboard() {
         }
 
         if (todayResult.status === "fulfilled") {
-          const data = todayResult.value?.data;
+          const data = todayResult.value;
 
           if (Array.isArray(data)) {
             setTodayAppointments(data);
@@ -87,7 +87,7 @@ export default function Dashboard() {
         }
 
         if (appointmentsResult.status === "fulfilled") {
-          const data = appointmentsResult.value?.data;
+          const data = appointmentsResult.value;
 
           if (Array.isArray(data)) {
             setAllAppointments(data);
@@ -117,7 +117,7 @@ export default function Dashboard() {
     return () => {
       mounted = false;
     };
-  }, [api]);
+  }, [api, currentPatient]);
 
   const sortedToday = useMemo(() => {
     const items = SafeArray(todayAppointments);
