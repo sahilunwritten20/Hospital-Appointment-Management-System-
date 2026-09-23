@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+server/node_modules/
+client/node_modules/
+
+# Build output
+client/dist/
+
+# Environment variables — never commit real credentials
+.env
+server/.env
+client/.env
+
+# Editor / OS
+.DS_Store
+.vscode/
+*.log
+npm-debug.log*

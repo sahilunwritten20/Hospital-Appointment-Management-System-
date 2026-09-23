@@ -1,0 +1,18 @@
+{
+  "name": "lifecare-hospital-mern",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LifeCare Hospital — MERN appointment management system (MongoDB, Express, React, Node)",
+  "scripts": {
+    "install:server": "npm install --prefix server",
+    "install:client": "npm install --prefix client",
+    "install:all": "npm run install:server && npm run install:client",
+    "build": "npm run install:all && npm run build --prefix client",
+    "start": "node server/server.js",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
