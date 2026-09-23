@@ -1,4 +1,4 @@
-const API = import.meta.env.VITE_API_URL || '/api';
+const API = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 
 // Low-level fetch wrapper. `token`, when provided, is sent as a bearer
 // token. Throws an Error with `.status` set on any non-2xx response.

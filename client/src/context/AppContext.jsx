@@ -130,12 +130,16 @@ export function AppProvider({ children }) {
     let cancelled = false;
     async function loadReferenceData() {
       try {
-        const [depts, docs] = await Promise.all([apiRequest('/departments'), apiRequest('/doctors')]);
-        if (!cancelled) {
-          setDepartments(depts);
-          setDoctors(docs);
-          setDataReady(true);
-        }
+       const [depts, docs] = await Promise.all([
+  apiRequest('/departments'),
+  apiRequest('/doctors'),
+]);
+
+if (!cancelled) {
+  setDepartments(Array.isArray(depts) ? depts : []);
+  setDoctors(Array.isArray(docs) ? docs : []);
+  setDataReady(true);
+}
       } catch (err) {
         if (!cancelled) showToast(err.message, 'warn');
       }
